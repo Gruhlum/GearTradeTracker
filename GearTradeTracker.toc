@@ -1,0 +1,8 @@
+## Interface: 120000
+## Title: GearTradeTracker
+## Notes: Tracks highest item level ever equipped per slot
+## Author: You
+## Version: 0.1
+## SavedVariables: GearTradeTrackerDB
+
+GearTradeTracker.lua
