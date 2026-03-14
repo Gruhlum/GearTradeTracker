@@ -28,14 +28,6 @@ f:SetScript("OnEvent", function(self, event, name)
     if GearTradeTrackerDB.targetItemLevel == nil then 
         GearTradeTrackerDB.targetItemLevel = 272 
     end
-
-    -- Update slider and editbox once DB exists
-    if slider then
-        slider:SetValue(GearTradeTrackerDB.targetItemLevel)
-    end
-    if editBox then
-        editBox:SetNumber(GearTradeTrackerDB.targetItemLevel)
-    end
 end)
 
 -- PLAYER_ENTERING_WORLD and PLAYER_EQUIPMENT_CHANGED events
@@ -110,6 +102,44 @@ SlashCmdList["GEARTRADETRACKER"] = function()
                     print(string.format("    %s: %d", handType, handData))
                 end
             end
+        end
+    end
+end
+
+SLASH_GTTDEBUG1 = "/gttdebug"
+SlashCmdList["GTTDEBUG"] = function()
+    local key = GearTradeTracker_GetCharKey()
+    local data = GearTradeTrackerDB[key] or {}
+    local playerClass = data.CLASS or "UNKNOWN"
+    
+    print("=== GearTradeTracker Debug Info ===")
+    print("Character Key:", key)
+    print("Class:", playerClass)
+    
+    print("\nClass Configuration:")
+    if GearTradeTracker_ClassWeaponTypes[playerClass] then
+        print("  Weapon Types Allowed:")
+        for hand, allowed in pairs(GearTradeTracker_ClassWeaponTypes[playerClass]) do
+            if allowed then print("    - " .. hand) end
+        end
+    else
+        print("  Class not found in weapon types!")
+    end
+    
+    if GearTradeTracker_ClassPrimaryStats[playerClass] then
+        print("  Primary Stats:")
+        for stat, _ in pairs(GearTradeTracker_ClassPrimaryStats[playerClass]) do
+            print("    - " .. stat)
+        end
+    end
+    
+    print("\nEquipped Items:")
+    for slot = 1, 17 do
+        local itemLink = GetInventoryItemLink("player", slot)
+        if itemLink then
+            local name, _, _, _, _, _, _, _, equipLoc = GetItemInfo(itemLink)
+            local ilvl = GetDetailedItemLevelInfo(itemLink)
+            print(string.format("  Slot %d: %s (equipLoc: %s, ilvl: %s)", slot, name, equipLoc, ilvl or "?"))
         end
     end
 end

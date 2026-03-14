@@ -7,6 +7,7 @@ local DEFAULT_TARGET_ILVL = 272
 local panelOpen = false
 local SelectedCharacter = nil
 local isRefreshing = false
+isInitializingSlider = false
 
 -- UI elements that must be accessible from multiple scopes
 local slider, editBox, hintButton
@@ -59,6 +60,23 @@ end
 local tabOverview = CreateTab(options, 1, "Overview")
 local settings = CreateTab(options, 2, "Settings")
 
+-- Hook the tab content to sync slider when visible
+tabOverview.content:HookScript("OnShow", function()
+    -- Ensure targetItemLevel exists
+    if not GearTradeTrackerDB then GearTradeTrackerDB = {} end
+    if not GearTradeTrackerDB.targetItemLevel then 
+        GearTradeTrackerDB.targetItemLevel = DEFAULT_TARGET_ILVL
+    end
+    
+    -- Update slider to match saved value without triggering OnValueChanged
+    if slider then
+        isInitializingSlider = true
+        slider:SetValue(GearTradeTrackerDB.targetItemLevel)
+        editBox:SetNumber(GearTradeTrackerDB.targetItemLevel)
+        isInitializingSlider = false
+    end
+end)
+
 local title = tabOverview.content:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 title:SetPoint("TOPLEFT", 16, 0)
 
@@ -68,14 +86,6 @@ Settings.RegisterAddOnCategory(category)
 SelectTab(1)
 options:HookScript("OnHide", function()
     panelOpen = false
-end)
-
-options:HookScript("OnShow", function()
-    -- Only mark as open if our category is shown
-    local current = SettingsPanel:GetCurrentCategory()
-    if current and current:GetID() == category:GetID() then
-        panelOpen = true
-    end
 end)
 
 function GearTradeTracker_ToggleUI()
@@ -127,16 +137,13 @@ slider = CreateFrame("Slider", nil, tabOverview.content, "OptionsSliderTemplate"
 slider:SetPoint("LEFT", GTT_CharacterDropdownButton, "RIGHT", 26, 0)
 slider:SetWidth(200)
 slider:SetMinMaxValues(MIN_TARGET_ILVL, MAX_TARGET_ILVL)
+slider:SetValue(MIN_TARGET_ILVL)
 slider:SetValueStep(1)
 slider:SetObeyStepOnDrag(true)
 
 slider.Text:SetText("Target Item Level")
 slider.Low:SetText(MIN_TARGET_ILVL)
 slider.High:SetText(MAX_TARGET_ILVL)
-
-if GearTradeTrackerDB and GearTradeTrackerDB.targetItemLevel then
-    slider:SetValue(GearTradeTrackerDB.targetItemLevel)
-end
 
 editBox = CreateFrame("EditBox", nil, tabOverview.content, "InputBoxTemplate")
 editBox:SetSize(60, 30)
@@ -180,6 +187,8 @@ end)
 
 -- Sync slider ↔ editbox
 slider:SetScript("OnValueChanged", function(self, value)
+    if isInitializingSlider then return end
+    
     value = math.floor(value + 0.5)
     GearTradeTrackerDB.targetItemLevel = value
     editBox:SetNumber(value)
@@ -294,27 +303,31 @@ function GearTradeTracker_RefreshCharacterOverview()
     -- Weapons (added below left column)
     if playerClass and GearTradeTracker_ClassWeaponTypes[playerClass] then
         for _, w in ipairs(GearTradeTracker_AllSlots.Weapons) do
-            if GearTradeTracker_ClassWeaponTypes[playerClass][w.hand] then
-                if not w.stat or (GearTradeTracker_ClassPrimaryStats[playerClass] and GearTradeTracker_ClassPrimaryStats[playerClass][w.stat]) then
-                    local name = w.stat
-                        and string.format("%s %s %s", w.slot, w.hand, w.stat)
-                        or string.format("%s %s", w.slot, w.hand)
+            -- Skip OFFHAND 1H weapons for classes that don't get them as drops
+            local skipWeapon = (w.slot == "OFFHAND" and w.hand == "1H" and playerClass ~= "DEMONHUNTER" and playerClass ~= "MONK")
+            if not skipWeapon then
+                if GearTradeTracker_ClassWeaponTypes[playerClass][w.hand] then
+                    if not w.stat or (GearTradeTracker_ClassPrimaryStats[playerClass] and GearTradeTracker_ClassPrimaryStats[playerClass][w.stat]) then
+                        local name = w.stat
+                            and string.format("%s %s %s", w.slot, w.hand, w.stat)
+                            or string.format("%s %s", w.slot, w.hand)
 
-                    local raw
-                    if w.stat then
-                        raw = data[w.slot]
-                            and data[w.slot][w.hand]
-                            and data[w.slot][w.hand][w.stat]
-                    else
-                        raw = data[w.slot]
-                            and data[w.slot][w.hand]
+                        local raw
+                        if w.stat then
+                            raw = data[w.slot]
+                                and data[w.slot][w.hand]
+                                and data[w.slot][w.hand][w.stat]
+                        else
+                            raw = data[w.slot]
+                                and data[w.slot][w.hand]
+                        end
+
+                        local stored = (type(raw) == "number" and raw) or nil
+
+                        local y = -rowLeft * rowHeight
+                        AddLine(overviewChild, col1X, y, name .. ":", GearTradeTracker_ColorizeIlvl(stored, GearTradeTrackerDB.targetItemLevel))
+                        rowLeft = rowLeft + 1
                     end
-
-                    local stored = (type(raw) == "number" and raw) or nil
-
-                    local y = -rowLeft * rowHeight
-                    AddLine(overviewChild, col1X, y, name .. ":", GearTradeTracker_ColorizeIlvl(stored, GearTradeTrackerDB.targetItemLevel))
-                    rowLeft = rowLeft + 1
                 end
             end
         end
@@ -335,16 +348,60 @@ generateButton:SetText("Generate Text")
 
 generateButton:SetScript("OnClick", function()
     local key = SelectedCharacter or GearTradeTracker_GetCharKey()
+    local data = GearTradeTrackerDB[key] or {}
+    local playerClass = data.CLASS
+    
     local list = GearTradeTracker_GetUntradeableSlots(key)
 
     local grouped = GearTradeTracker_GroupSlots(list)
     GearTradeTracker_SortByOutputOrder(grouped)
 
+    -- Count untradeeable weapons
+    local untradeableWeaponCount = 0
+    local filtered = {}
+    
+    for _, slot in ipairs(grouped) do
+        if string.find(slot, "MAINHAND") or string.find(slot, "OFFHAND") then
+            untradeableWeaponCount = untradeableWeaponCount + 1
+        else
+            table.insert(filtered, slot)
+        end
+    end
+    
+    -- Count total tradeable weapons for this class
+    local totalTradeableWeapons = 0
+    if playerClass and GearTradeTracker_ClassWeaponTypes[playerClass] then
+        for _, w in ipairs(GearTradeTracker_AllSlots.Weapons) do
+            local skipWeapon = (w.slot == "OFFHAND" and w.hand == "1H" and playerClass ~= "DEMONHUNTER" and playerClass ~= "MONK")
+            if not skipWeapon then
+                if w.stat then
+                    if GearTradeTracker_ClassPrimaryStats[playerClass] and GearTradeTracker_ClassPrimaryStats[playerClass][w.stat] then
+                        if GearTradeTracker_ClassWeaponTypes[playerClass][w.hand] then
+                            totalTradeableWeapons = totalTradeableWeapons + 1
+                        end
+                    end
+                else
+                    if GearTradeTracker_ClassWeaponTypes[playerClass][w.hand] then
+                        totalTradeableWeapons = totalTradeableWeapons + 1
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Only show "WEAPONS" if ALL tradeable weapons are untradeeable
+    if untradeableWeaponCount > 0 and untradeableWeaponCount == totalTradeableWeapons then
+        table.insert(filtered, "WEAPONS")
+        GearTradeTracker_SortByOutputOrder(filtered)
+    else
+        filtered = grouped
+    end
+
     local text
-    if #grouped == 0 then
+    if #filtered == 0 then
         text = "Trade All"
     else
-        text = "Can't trade: " .. table.concat(grouped, ", ")
+        text = "Can't trade: " .. table.concat(filtered, ", ")
     end
 
     GearTradeTracker_ShowExportPopup(text)

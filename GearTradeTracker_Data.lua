@@ -19,6 +19,9 @@ GearTradeTracker_OutputOrder = {
     "MAINHAND 2H STR",
     "MAINHAND 2H AGI",
     "MAINHAND 2H INT",
+    "OFFHAND 1H STR",
+    "OFFHAND 1H AGI",
+    "OFFHAND 1H INT",
     "OFFHAND SHIELD",
     "OFFHAND FRILL",
 }
@@ -54,9 +57,13 @@ GearTradeTracker_AllSlots = {
         { slot = "MAINHAND", hand = "1H", stat = "STR" },
         { slot = "MAINHAND", hand = "1H", stat = "AGI" },
 
-        { slot = "MAINHAND", hand = "2H", stat = "INT" },
         { slot = "MAINHAND", hand = "2H", stat = "STR" },
         { slot = "MAINHAND", hand = "2H", stat = "AGI" },
+        { slot = "MAINHAND", hand = "2H", stat = "INT" },
+
+        { slot = "OFFHAND", hand = "1H", stat = "INT" },
+        { slot = "OFFHAND", hand = "1H", stat = "STR" },
+        { slot = "OFFHAND", hand = "1H", stat = "AGI" },
 
         { slot = "OFFHAND", hand = "SHIELD", stat = nil },
         { slot = "OFFHAND", hand = "FRILL",  stat = nil },
@@ -75,7 +82,7 @@ GearTradeTracker_ClassPrimaryStats = {
     DRUID     = { INT = true, AGI = true },
     DEATHKNIGHT = { STR = true },
     MONK      = { AGI = true, INT = true },
-    DEMONHUNTER = { AGI = true },
+    DEMONHUNTER = { AGI = true, INT = true },
     EVOKER    = { INT = true },
 }
 
@@ -91,6 +98,6 @@ GearTradeTracker_ClassWeaponTypes = {
     DRUID        = { ["1H"]=true, ["2H"]=true, FRILL=true },
     DEATHKNIGHT  = { ["1H"]=true, ["2H"]=true },
     MONK         = { ["1H"]=true, ["2H"]=true },
-    DEMONHUNTER  = { ["1H"]=true, ["2H"]=true },
+    DEMONHUNTER  = { ["1H"]=true },
     EVOKER       = { ["1H"]=true, ["2H"]=true, FRILL=true },
 }
