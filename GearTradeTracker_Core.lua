@@ -3,24 +3,34 @@
 local pending = {}
 
 function GearTradeTracker_GetCharKey()
-    local name, realm = UnitName("player")
-    realm = realm or GetRealmName()
+    local name, realm = UnitFullName("player")
+    if not realm or realm == "" then
+        realm = GetRealmName()
+    end
     return name .. "-" .. realm
 end
 
+
+
 function GearTradeTracker_InitChar()
     local key = GearTradeTracker_GetCharKey()
-    GearTradeTrackerDB[key] = GearTradeTrackerDB[key] or {}
 
-    GearTradeTrackerDB[key].CLASS = select(2, UnitClass("player"))
+    -- Ensure root tables exist
+    GearTradeTrackerDB.characters = GearTradeTrackerDB.characters or {}
 
-    if type(GearTradeTrackerDB[key]) ~= "table" then
-        GearTradeTrackerDB[key] = {}
+    -- Ensure character table exists
+    GearTradeTrackerDB.characters[key] = GearTradeTrackerDB.characters[key] or {}
+
+    local charDB = GearTradeTrackerDB.characters[key]
+
+    if type(charDB) ~= "table" then
+        charDB = {}
+        GearTradeTrackerDB.characters[key] = charDB
     end
 
-    GearTradeTrackerDB[key].FINGER = nil
-    GearTradeTrackerDB[key].TRINKET = nil
+    charDB.CLASS = select(2, UnitClass("player"))
 end
+
 
 local function DebugPrintStats(itemLink)
     local stats = C_Item.GetItemStats(itemLink)
@@ -79,48 +89,75 @@ local function GetWeaponSlotAndType(equipLoc, slotID)
 end
 
 local function EnsureWeaponPath(key, slotKey, handType, stat)
-    GearTradeTrackerDB[key][slotKey] = GearTradeTrackerDB[key][slotKey] or {}
-    GearTradeTrackerDB[key][slotKey][handType] = GearTradeTrackerDB[key][slotKey][handType] or {}
+    local charDB = GearTradeTrackerDB.characters[key]
+    charDB[slotKey] = charDB[slotKey] or {}
+    charDB[slotKey][handType] = charDB[slotKey][handType] or {}
 
     if stat then
-        GearTradeTrackerDB[key][slotKey][handType][stat] =
-            GearTradeTrackerDB[key][slotKey][handType][stat] or 0
+        charDB[slotKey][handType][stat] =
+            charDB[slotKey][handType][stat] or 0
     else
-        GearTradeTrackerDB[key][slotKey][handType] =
-            GearTradeTrackerDB[key][slotKey][handType] or 0
+        charDB[slotKey][handType] =
+            charDB[slotKey][handType] or 0
     end
 end
+
 
 local function UpdateArmor(key, slotID, itemLevel)
+    -- Ensure character table exists
+    GearTradeTrackerDB.characters[key] = GearTradeTrackerDB.characters[key] or {}
+
     local slotName = GearTradeTracker_ArmorBySlotID[slotID]
     if not slotName then return end
+    -- Check if this slot belongs to a group (finger/trinket)
+    for groupName, slots in pairs(GearTradeTracker_SlotGroups) do
+        for _, s in ipairs(slots) do
+            if s == slotName then
+                -- Update the individual slot
+                GearTradeTrackerDB.characters[key][s] = itemLevel
 
-    local current = GearTradeTrackerDB[key][slotName] or 0
+                -- Recalculate the group value = lowest of the two slots
+                local a = GearTradeTrackerDB.characters[key][slots[1]] or 0
+                local b = GearTradeTrackerDB.characters[key][slots[2]] or 0
+                local lowest = math.min(a, b)
+
+                GearTradeTrackerDB.characters[key][groupName] = lowest
+                return
+            end
+        end
+    end
+
+    -- Normal non-group slot
+    local current = GearTradeTrackerDB.characters[key][slotName] or 0
     if itemLevel > current then
-        GearTradeTrackerDB[key][slotName] = itemLevel
+        GearTradeTrackerDB.characters[key][slotName] = itemLevel
     end
 end
+
 
 local function UpdateWeapon(key, itemLink, itemLevel, equipLoc, slotID, playerClass)
     local slotKey, handType = GetWeaponSlotAndType(equipLoc, slotID)
     if not slotKey or not handType then return end
+
+    -- Ensure character table exists
+    GearTradeTrackerDB.characters[key] = GearTradeTrackerDB.characters[key] or {}
+    local charDB = GearTradeTrackerDB.characters[key]
 
     -- 1H / 2H weapons (stat-based)
     if handType == "1H" or handType == "2H" then
         local stats = C_Item.GetItemStats(itemLink)
         if not stats then return end
 
-        GearTradeTrackerDB[key][slotKey] = GearTradeTrackerDB[key][slotKey] or {}
-        GearTradeTrackerDB[key][slotKey][handType] = GearTradeTrackerDB[key][slotKey][handType] or {}
+        charDB[slotKey] = charDB[slotKey] or {}
+        charDB[slotKey][handType] = charDB[slotKey][handType] or {}
 
-        -- Check all primary stats of the player's class
         if playerClass and GearTradeTracker_ClassPrimaryStats[playerClass] then
             for stat, _ in pairs(GearTradeTracker_ClassPrimaryStats[playerClass]) do
                 local statKey = StatAbbrevToKey(stat)
                 if statKey and stats[statKey] then
-                    local current = GearTradeTrackerDB[key][slotKey][handType][stat] or 0
+                    local current = charDB[slotKey][handType][stat] or 0
                     if itemLevel > current then
-                        GearTradeTrackerDB[key][slotKey][handType][stat] = itemLevel
+                        charDB[slotKey][handType][stat] = itemLevel
                     end
                 end
             end
@@ -129,11 +166,11 @@ local function UpdateWeapon(key, itemLink, itemLevel, equipLoc, slotID, playerCl
     end
 
     -- SHIELD / FRILL (single numeric value)
-    GearTradeTrackerDB[key][slotKey] = GearTradeTrackerDB[key][slotKey] or {}
+    charDB[slotKey] = charDB[slotKey] or {}
 
-    local current = tonumber(GearTradeTrackerDB[key][slotKey][handType]) or 0
+    local current = tonumber(charDB[slotKey][handType]) or 0
     if itemLevel > current then
-        GearTradeTrackerDB[key][slotKey][handType] = itemLevel
+        charDB[slotKey][handType] = itemLevel
     end
 end
 
@@ -150,7 +187,7 @@ local function ProcessItem(itemLink, slotID)
     local itemLevel = GetDetailedItemLevelInfo(itemLink)
     if not itemLevel or itemLevel == 0 then return end
 
-    local data = GearTradeTrackerDB[key] or {}
+    local data = GearTradeTrackerDB.characters[key] or {}
     local playerClass = data.CLASS
 
     -- Weapon detection by exact equipLoc
@@ -247,8 +284,8 @@ local function SanitizeValue(v)
 end
 
 function GearTradeTracker_GetUntradeableSlots(key)
-    local data = GearTradeTrackerDB[key] or {}
-    local playerClass = data.CLASS or GearTradeTracker_InitChar() and (GearTradeTrackerDB[key] and GearTradeTrackerDB[key].CLASS)
+    local data = GearTradeTrackerDB.characters[key] or {}
+    local playerClass = data.CLASS
     local target = GearTradeTrackerDB.targetItemLevel
     local list = {}
 
@@ -263,11 +300,7 @@ function GearTradeTracker_GetUntradeableSlots(key)
    -- Weapons
     if playerClass and GearTradeTracker_ClassWeaponTypes[playerClass] then
         for _, w in ipairs(GearTradeTracker_AllSlots.Weapons) do
-            -- Skip OFFHAND 1H weapons for classes that don't get them as drops
-            local skipWeapon = (w.slot == "OFFHAND" and w.hand == "1H" and playerClass ~= "DEMONHUNTER" and playerClass ~= "MONK")
-            if not skipWeapon then
-                -- 1) Stat-based weapons (1H/2H INT/STR/AGI)
-                if w.stat then
+           if w.stat then
                     if GearTradeTracker_ClassPrimaryStats[playerClass] and GearTradeTracker_ClassPrimaryStats[playerClass][w.stat] then
 
                         local raw = data[w.slot]
@@ -295,7 +328,6 @@ function GearTradeTracker_GetUntradeableSlots(key)
                         end
                     end
                 end
-            end
         end
     end
     return list

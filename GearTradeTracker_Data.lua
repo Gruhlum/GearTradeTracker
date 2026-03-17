@@ -86,18 +86,108 @@ GearTradeTracker_ClassPrimaryStats = {
     EVOKER    = { INT = true },
 }
 
+GearTradeTracker_ClassSlotRestrictions = {
+    PALADIN = {
+        OFFHAND = { ["1H"] = false },
+    },
+    WARRIOR = {
+        OFFHAND = { ["1H"] = true }, 
+    },
+    ROGUE = {
+        OFFHAND = { ["1H"] = true },
+    },
+    DEMONHUNTER = {
+        OFFHAND = { ["1H"] = true },
+    },
+    MONK = {
+        OFFHAND = { ["1H"] = true },
+    },
+    EVOKER = {
+        OFFHAND = { ["1H"] = false },
+    },
+    SHAMAN = {
+        OFFHAND = { ["1H"] = false },
+    },
+    DRUID = {
+        OFFHAND = { ["1H"] = false },
+    },
+}
+
 GearTradeTracker_ClassWeaponTypes = {
-    WARRIOR      = { ["1H"]=true, ["2H"]=true, SHIELD=true },
-    PALADIN      = { ["1H"]=true, ["2H"]=true, SHIELD=true },
-    HUNTER       = { ["1H"]=true, ["2H"]=true },
-    ROGUE        = { ["1H"]=true },
-    PRIEST       = { ["1H"]=true, ["2H"]=true, FRILL=true },
-    SHAMAN       = { ["1H"]=true, ["2H"]=true, SHIELD=true },
-    MAGE         = { ["1H"]=true, ["2H"]=true, FRILL=true },
-    WARLOCK      = { ["1H"]=true, ["2H"]=true, FRILL=true },
-    DRUID        = { ["1H"]=true, ["2H"]=true, FRILL=true },
-    DEATHKNIGHT  = { ["1H"]=true, ["2H"]=true },
-    MONK         = { ["1H"]=true, ["2H"]=true },
-    DEMONHUNTER  = { ["1H"]=true },
-    EVOKER       = { ["1H"]=true, ["2H"]=true, FRILL=true },
+    WARRIOR = {
+        ["1H"] = { STR = true },
+        ["2H"] = { STR = true },
+        SHIELD = true,
+    },
+
+    PALADIN = {
+        ["1H"] = { STR = true, INT = true },
+        ["2H"] = { STR = true },
+        SHIELD = true,
+    },
+
+    HUNTER = {
+        ["1H"] = { AGI = true },
+        ["2H"] = { AGI = true },
+    },
+
+    ROGUE = {
+        ["1H"] = { AGI = true },
+    },
+
+    PRIEST = {
+        ["1H"] = { INT = true },
+        ["2H"] = { INT = true },
+        FRILL = true,
+    },
+
+    SHAMAN = {
+        ["1H"] = { INT = true, AGI = true },
+        ["2H"] = { AGI = false, INT = true },
+        SHIELD = true,
+    },
+
+    MAGE = {
+        ["1H"] = { INT = true },
+        ["2H"] = { INT = true },
+        FRILL = true,
+    },
+
+    WARLOCK = {
+        ["1H"] = { INT = true },
+        ["2H"] = { INT = true },
+        FRILL = true,
+    },
+
+    DRUID = {
+        ["1H"] = { INT = true, AGI = true },
+        ["2H"] = { AGI = true, INT = true },
+        FRILL = true,
+    },
+
+    DEATHKNIGHT = {
+        ["1H"] = { STR = true },
+        ["2H"] = { STR = true },
+    },
+
+    MONK = {
+        ["1H"] = { AGI = true, INT = true },
+        ["2H"] = { AGI = true, INT = true },
+    },
+
+    DEMONHUNTER = {
+        ["1H"] = { AGI = true },
+    },
+
+    EVOKER = {
+        ["1H"] = { INT = true },
+        ["2H"] = { INT = true },
+        FRILL = true,
+    },
+}
+
+
+GearTradeTracker_SlotGroups = {
+    FINGER = { "FINGER1", "FINGER2" },
+    TRINKET = { "TRINKET1", "TRINKET2" },
 }

@@ -62,8 +62,11 @@ local settings = CreateTab(options, 2, "Settings")
 
 -- Hook the tab content to sync slider when visible
 tabOverview.content:HookScript("OnShow", function()
-    -- Ensure targetItemLevel exists
+    -- Ensure DB root exists
     if not GearTradeTrackerDB then GearTradeTrackerDB = {} end
+    if not GearTradeTrackerDB.characters then GearTradeTrackerDB.characters = {} end
+
+    -- Ensure targetItemLevel exists
     if not GearTradeTrackerDB.targetItemLevel then 
         GearTradeTrackerDB.targetItemLevel = DEFAULT_TARGET_ILVL
     end
@@ -76,6 +79,7 @@ tabOverview.content:HookScript("OnShow", function()
         isInitializingSlider = false
     end
 end)
+
 
 local title = tabOverview.content:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
 title:SetPoint("TOPLEFT", 16, 0)
@@ -106,22 +110,13 @@ dropdown:SetPoint("TOPLEFT", tabOverview.content, "TOPLEFT", -16, 0)
 
 local function GetAllCharacterKeys()
     local keys = {}
-    local reservedKeys = {
-        targetItemLevel = true,
-        settings = true,
-        minimap = true,
-        characters = true,
-    }
-    
-    for key in pairs(GearTradeTrackerDB) do
-        if not reservedKeys[key] and type(GearTradeTrackerDB[key]) == "table" then
-            local record = GearTradeTrackerDB[key]
-            if record.CLASS or record.HEAD or record.MAINHAND or record.OFFHAND then
-                table.insert(keys, key)
-            end
+
+    if GearTradeTrackerDB and GearTradeTrackerDB.characters then
+        for key in pairs(GearTradeTrackerDB.characters) do
+            table.insert(keys, key)
         end
     end
-    
+
     table.sort(keys)
     return keys
 end
@@ -231,14 +226,14 @@ function GearTradeTracker_RefreshCharacterOverview()
     end
 
     local key = SelectedCharacter or GearTradeTracker_GetCharKey()
-    local data = GearTradeTrackerDB[key] or {}
+    local data = GearTradeTrackerDB.characters[key] or {}
     local playerClass = data.CLASS
-
-    if not playerClass then
-        GearTradeTracker_InitChar()
-        data = GearTradeTrackerDB[key] or {}
-        playerClass = data.CLASS
-    end
+if not playerClass then
+    -- Do NOT initialize other characters
+    -- Just skip showing their data if CLASS is missing
+    isRefreshing = false
+    return
+end
 
     -- Layout configuration
     local col1X = 0
@@ -249,20 +244,35 @@ function GearTradeTracker_RefreshCharacterOverview()
     local rowRight = 0
 
     local function AddLine(parent, x, y, labelText, valueText)
-        local line = CreateFrame("Frame", nil, parent)
-        line:SetSize(200, 20)
-        line:SetPoint("TOPLEFT", x, y)
+    local line = CreateFrame("Frame", nil, parent)
+    line:SetSize(200, 20)
+    line:SetPoint("TOPLEFT", x, y)
 
-        local label = line:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        label:SetPoint("LEFT")
-        label:SetText(labelText)
+    local label = line:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    label:SetPoint("LEFT")
+    label:SetText(labelText)
 
-        local value = line:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        value:SetPoint("LEFT", label, "RIGHT", 10, 0)
-        value:SetText(valueText)
+    local value = line:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    value:SetPoint("LEFT", label, "RIGHT", 10, 0)
+    value:SetText(valueText)
 
-        return line
+    -- Tooltip for grouped slots
+    if labelText == "FINGER:" or labelText == "TRINKET:" then
+        label:SetText("|cffffff00" .. labelText .. "|r")
+        line:EnableMouse(true)
+        line:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine("Lowest item level of both slots counts.\nSwapping one item no longer works!", 0.9, 0.9, 0.9, true)
+            GameTooltip:Show()
+        end)
+        line:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
     end
+
+    return line
+end
+
 
     local LeftColumnOrder = {
         "HEAD",
@@ -278,10 +288,8 @@ function GearTradeTracker_RefreshCharacterOverview()
         "WAIST",
         "LEGS",
         "FEET",
-        "FINGER1",
-        "FINGER2",
-        "TRINKET1",
-        "TRINKET2",
+        "FINGER",
+        "TRINKET"
     }
 
     -- Fill LEFT column (armor)
@@ -300,39 +308,55 @@ function GearTradeTracker_RefreshCharacterOverview()
         rowRight = rowRight + 1
     end
 
-    -- Weapons (added below left column)
-    if playerClass and GearTradeTracker_ClassWeaponTypes[playerClass] then
-        for _, w in ipairs(GearTradeTracker_AllSlots.Weapons) do
-            -- Skip OFFHAND 1H weapons for classes that don't get them as drops
-            local skipWeapon = (w.slot == "OFFHAND" and w.hand == "1H" and playerClass ~= "DEMONHUNTER" and playerClass ~= "MONK")
-            if not skipWeapon then
-                if GearTradeTracker_ClassWeaponTypes[playerClass][w.hand] then
-                    if not w.stat or (GearTradeTracker_ClassPrimaryStats[playerClass] and GearTradeTracker_ClassPrimaryStats[playerClass][w.stat]) then
-                        local name = w.stat
-                            and string.format("%s %s %s", w.slot, w.hand, w.stat)
-                            or string.format("%s %s", w.slot, w.hand)
+   -- Weapons (added below left column)
+if playerClass and GearTradeTracker_ClassWeaponTypes[playerClass] then
+    for _, w in ipairs(GearTradeTracker_AllSlots.Weapons) do
 
-                        local raw
-                        if w.stat then
-                            raw = data[w.slot]
-                                and data[w.slot][w.hand]
-                                and data[w.slot][w.hand][w.stat]
-                        else
-                            raw = data[w.slot]
-                                and data[w.slot][w.hand]
-                        end
+        local classWeapons = GearTradeTracker_ClassWeaponTypes[playerClass]
+        local allowedHands = classWeapons[w.hand]
 
-                        local stored = (type(raw) == "number" and raw) or nil
+        -- Hand type must be allowed
+        if allowedHands then
 
-                        local y = -rowLeft * rowHeight
-                        AddLine(overviewChild, col1X, y, name .. ":", GearTradeTracker_ColorizeIlvl(stored, GearTradeTrackerDB.targetItemLevel))
-                        rowLeft = rowLeft + 1
+            -- Slot restrictions (e.g., Paladin cannot OFFHAND 1H)
+            local slotRules = GearTradeTracker_ClassSlotRestrictions[playerClass]
+            local slotBlocked = slotRules
+                and slotRules[w.slot]
+                and slotRules[w.slot][w.hand] == false
+
+            if not slotBlocked then
+
+                -- Stat filtering
+                local statAllowed =
+                    not w.stat or
+                    (type(allowedHands) == "table" and allowedHands[w.stat]) or
+                    allowedHands == true
+
+                if statAllowed then
+                    local name = w.stat
+                        and string.format("%s %s %s", w.slot, w.hand, w.stat)
+                        or string.format("%s %s", w.slot, w.hand)
+
+                    local raw
+                    if w.stat then
+                        raw = data[w.slot]
+                            and data[w.slot][w.hand]
+                            and data[w.slot][w.hand][w.stat]
+                    else
+                        raw = data[w.slot]
+                            and data[w.slot][w.hand]
                     end
+
+                    local stored = (type(raw) == "number" and raw) or nil
+
+                    local y = -rowLeft * rowHeight
+                    AddLine(overviewChild, col1X, y, name .. ":", GearTradeTracker_ColorizeIlvl(stored, GearTradeTrackerDB.targetItemLevel))
+                    rowLeft = rowLeft + 1
                 end
             end
         end
     end
-
+end
     -- Adjust container height
     local totalRows = math.max(rowLeft, rowRight)
     overviewChild:SetHeight(totalRows * rowHeight + 20)
@@ -348,7 +372,7 @@ generateButton:SetText("Generate Text")
 
 generateButton:SetScript("OnClick", function()
     local key = SelectedCharacter or GearTradeTracker_GetCharKey()
-    local data = GearTradeTrackerDB[key] or {}
+    local data = GearTradeTrackerDB.characters[key] or {}
     local playerClass = data.CLASS
     
     local list = GearTradeTracker_GetUntradeableSlots(key)
@@ -448,28 +472,17 @@ local function SettingsDropdown_OnClick(self)
 end
 
 local function SettingsDropdown_Initialize()
-    if not GearTradeTrackerDB then return end
-    
-    local info = UIDropDownMenu_CreateInfo()
-    local reservedKeys = {
-        targetItemLevel = true,
-        settings = true,
-        minimap = true,
-        characters = true,
-    }
+    if not GearTradeTrackerDB or not GearTradeTrackerDB.characters then return end
 
-    for key in pairs(GearTradeTrackerDB) do
-        if not reservedKeys[key] and type(GearTradeTrackerDB[key]) == "table" then
-            local record = GearTradeTrackerDB[key]
-            if record.CLASS or record.HEAD or record.MAINHAND or record.OFFHAND then
-                info.text = key
-                info.value = key
-                info.func = SettingsDropdown_OnClick
-                UIDropDownMenu_AddButton(info)
-            end
-        end
+    for key in pairs(GearTradeTrackerDB.characters) do
+        local info = UIDropDownMenu_CreateInfo()
+        info.text = key
+        info.value = key
+        info.func = SettingsDropdown_OnClick
+        UIDropDownMenu_AddButton(info)
     end
 end
+
 
 UIDropDownMenu_SetWidth(settingsDropdown, 160)
 UIDropDownMenu_Initialize(settingsDropdown, SettingsDropdown_Initialize)
@@ -495,16 +508,17 @@ clearDBButton:SetPoint("TOPLEFT", deleteCharButton, "BOTTOMLEFT", 0, -10)
 clearDBButton:SetText("Clear Entire Database")
 
 clearDBButton:SetScript("OnClick", function()
-    local reservedKeys = { targetItemLevel = true, settings = true, minimap = true, characters = true }
-    for key in pairs(GearTradeTrackerDB) do
-        if not reservedKeys[key] then
-            GearTradeTrackerDB[key] = nil
-        end
-    end
+    -- Reset ONLY the character data
+    GearTradeTrackerDB.characters = {}
+
     print("GearTradeTracker: All character data cleared.")
+    -- Reset dropdown selection
     UIDropDownMenu_SetSelectedValue(settingsDropdown, nil)
+
+    -- Reinitialize dropdown
     UIDropDownMenu_Initialize(settingsDropdown, SettingsDropdown_Initialize)
 end)
+
 
 local minimapLabel = settingsContent:CreateFontString(nil, "ARTWORK", "GameFontNormal")
 minimapLabel:SetPoint("TOPLEFT", clearDBButton, "BOTTOMLEFT", 0, -20)
